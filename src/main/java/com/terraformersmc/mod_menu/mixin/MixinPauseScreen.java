@@ -1,15 +1,8 @@
 package com.terraformersmc.mod_menu.mixin;
 
-import com.terraformersmc.mod_menu.ModMenu;
-import com.terraformersmc.mod_menu.config.ModMenuConfig;
-import com.terraformersmc.mod_menu.event.ModMenuEventHandler;
 import com.terraformersmc.mod_menu.gui.ModsScreen;
-import com.terraformersmc.mod_menu.gui.widget.ModMenuButtonWidget;
-import com.terraformersmc.mod_menu.gui.widget.UpdateCheckerTexturedButtonWidget;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.layouts.GridLayout;
-import net.minecraft.client.gui.layouts.LayoutElement;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -17,108 +10,72 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
-import java.util.List;
 
 @Mixin(PauseScreen.class)
 public abstract class MixinPauseScreen extends Screen {
-	protected MixinPauseScreen(Component title) {
-		super(title);
-	}
+    protected MixinPauseScreen(Component title) {
+        super(title);
+    }
 
-	@Inject(method = "createPauseMenu", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/layouts/GridLayout;visitWidgets(Ljava/util/function/Consumer;)V"), locals = LocalCapture.CAPTURE_FAILEXCEPTION)
-	private void onInitWidgets(CallbackInfo ci, GridLayout gridlayout) {
-		if (gridlayout != null) {
-			final List<LayoutElement> buttons = ((AccessorGridLayout) gridlayout).getChildren();
-			if (ModMenu.getConfig().MODIFY_GAME_MENU.get()) {
-				int modsButtonIndex = -1;
-				final int spacing = 24;
-				int buttonsY = this.height / 4 + 8;
-				ModMenuConfig.GameMenuButtonStyle style = ModMenu.getConfig().GAME_MENU_BUTTON_STYLE.get();
-				int vanillaButtonsY = this.height / 4 + 72 - 16 + 1;
-				final int fullWidthButton = 204;
-				boolean hadExitButton = false;
-				boolean hasModsButton = !buttons.stream().filter(button -> ModMenuEventHandler.buttonHasText(button, "fml.menu.mods")).toList().isEmpty();
+    @Inject(method = "init", at = @At("TAIL"))
+    private void replaceStatsButton(CallbackInfo ci) {
+        final int spacing = 24;
 
-				for (int i = 0; i < buttons.size(); i++) {
-					LayoutElement widget = buttons.get(i);
+        var iterator = this.renderables.listIterator();
 
-					if (ModMenuEventHandler.buttonHasText(widget, "menu.returnToMenu")
-							|| ModMenuEventHandler.buttonHasText(widget, "menu.disconnect"))
-						hadExitButton = true;
+        var modsTranslatable = Component.translatable("fml.menu.mods");
+        var returnToMenuTranslatable = Component.translatable("menu.returnToMenu");
 
-					if (hasModsButton)
-						ModMenuEventHandler.shiftButtons(widget, hadExitButton, spacing + (hadExitButton ? 12 : -12));
+        Button builtInModsButton = null;
+        Button returnToMenuButton = null;
 
-					if (style == ModMenuConfig.GameMenuButtonStyle.INSERT) {
-						if (!(widget instanceof AbstractWidget button) || button.visible) {
-							ModMenuEventHandler.shiftButtons(widget, modsButtonIndex == -1 || ModMenuEventHandler.buttonHasText(widget, "menu.reportBugs", "menu.server_links"), spacing);
-							if (modsButtonIndex == -1) {
-								buttonsY = widget.getY();
-							}
-						}
-					}
-					boolean isShortFeedback = ModMenuEventHandler.buttonHasText(widget, "menu.feedback");
-					boolean isLongFeedback = ModMenuEventHandler.buttonHasText(widget, "menu.sendFeedback");
+        while (iterator.hasNext()) {
+            var widget = iterator.next();
 
-					if (isShortFeedback || isLongFeedback) {
-						modsButtonIndex = i + 1;
-						vanillaButtonsY = widget.getY();
-						if (style == ModMenuConfig.GameMenuButtonStyle.REPLACE) {
-							buttons.set(i, new ModMenuButtonWidget(
-									widget.getX(),
-									widget.getY(),
-									isShortFeedback ? widget.getWidth() : fullWidthButton,
-									widget.getHeight(),
-									ModMenu.createModsButtonText(true),
-									this
-							));
-							buttons.stream()
-									.filter(w -> ModMenuEventHandler.buttonHasText(w, "menu.reportBugs"))
-									.forEach(w -> {
-										if (w instanceof AbstractWidget cw) {
-											cw.visible = false;
-											cw.active = false;
-										}
-									});
-						} else {
-							modsButtonIndex = i + 1;
-							if (!(widget instanceof AbstractWidget button) || button.visible) {
-								buttonsY = widget.getY();
-							}
-						}
-					}
-				}
-				if (modsButtonIndex != -1) {
-					if (style == ModMenuConfig.GameMenuButtonStyle.INSERT) {
-						buttons.add(modsButtonIndex, new ModMenuButtonWidget(
-								this.width / 2 - 102,
-								buttonsY + spacing,
-								fullWidthButton,
-								20,
-								ModMenu.createModsButtonText(true),
-								this
-						));
-					} else if (style == ModMenuConfig.GameMenuButtonStyle.ICON) {
-						buttons.add(modsButtonIndex, new UpdateCheckerTexturedButtonWidget(
-								this.width / 2 + 4 + 100 + 2,
-								vanillaButtonsY,
-								20,
-								20,
-								0,
-								0,
-								20,
-								ModMenuEventHandler.MODS_BUTTON_TEXTURE,
-								32,
-								64,
-								button -> Minecraft.getInstance().setScreen(new ModsScreen(this)),
-								ModMenu.createModsButtonText(true)
-						));
-					}
-				}
-				buttons.removeIf(button -> ModMenuEventHandler.buttonHasText(button, "fml.menu.mods"));
-			}
-		}
-	}
+            if (!(widget instanceof Button button))
+                continue;
+
+            var buttonText = button.getMessage();
+
+            if (buttonText.equals(modsTranslatable)) {
+                builtInModsButton = button;
+                break;
+            }
+
+            if (buttonText.equals(returnToMenuTranslatable)) {
+                returnToMenuButton = button;
+            }
+        }
+
+        var replacedModsButtonBuilder = Button.builder(
+                Component.translatable("fml.menu.mods"),
+                btn -> Minecraft.getInstance().setScreen(new ModsScreen(this)));
+
+        // This will run when Forge version is 47.2.0 or higher to override the built-in "Mods" button
+        if (builtInModsButton != null) {
+            builtInModsButton.visible = false;
+
+            this.addRenderableWidget(
+                    replacedModsButtonBuilder
+                            .bounds(builtInModsButton.getX(), builtInModsButton.getY(),
+                                    builtInModsButton.getWidth(), builtInModsButton.getHeight())
+                            .build()
+            );
+
+            return;
+        }
+
+        // or lower than 47.2.0 for compatibility
+        if (returnToMenuButton != null) {
+            this.addRenderableWidget(
+                    replacedModsButtonBuilder
+                            .bounds(returnToMenuButton.getX(), returnToMenuButton.getY(),
+                                    returnToMenuButton.getWidth(), returnToMenuButton.getHeight())
+                            .build()
+            );
+
+            returnToMenuButton.setY(returnToMenuButton.getY() + spacing);
+        }
+    }
 }
